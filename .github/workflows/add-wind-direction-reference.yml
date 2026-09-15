@@ -1,0 +1,50 @@
+name: Update wind direction reference
+
+on:
+  push:
+    paths:
+      - '.github/workflows/add-wind-direction-reference.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update index.html
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          # Add compact compass styles once.
+          css_old = '.p{padding:12px;margin-top:10px}canvas{width:100%;height:320px;display:block}'
+          css_new = '.p{padding:12px;margin-top:10px}.dirref{display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:center}.dirsvg{width:100%;max-width:340px;height:auto;margin:auto;display:block}.dircopy{line-height:1.65}.dircopy b{font-size:14px}@media(max-width:760px){.dirref{grid-template-columns:1fr}}canvas{width:100%;height:320px;display:block}'
+          if css_old in s and '.dirref{' not in s:
+              s = s.replace(css_old, css_new, 1)
+
+          # Insert a wind-direction reference panel above KPI cards.
+          anchor = '<section id=a class="tab on"><div id=k class=k></div>'
+          panel = '''<section id=a class="tab on"><div class="p dirref"><svg class="dirsvg" viewBox="0 0 340 340" role="img" aria-label="Wind direction reference 0 to 360 degrees"><circle cx="170" cy="170" r="125" fill="none" stroke="var(--l)" stroke-width="2"/><circle cx="170" cy="170" r="88" fill="none" stroke="var(--q)"/><circle cx="170" cy="170" r="48" fill="none" stroke="var(--q)"/><g stroke="var(--m)" stroke-width="1.5"><line x1="170" y1="45" x2="170" y2="295"/><line x1="45" y1="170" x2="295" y2="170"/><line x1="82" y1="82" x2="258" y2="258"/><line x1="258" y1="82" x2="82" y2="258"/></g><g fill="var(--t)" font-family="Segoe UI,Arial" text-anchor="middle"><text x="170" y="24" font-size="15" font-weight="700">N · 0° / 360°</text><text x="318" y="175" font-size="15" font-weight="700">E · 90°</text><text x="170" y="330" font-size="15" font-weight="700">S · 180°</text><text x="22" y="175" font-size="15" font-weight="700">W · 270°</text><text x="272" y="72" font-size="11">NE · 45°</text><text x="273" y="276" font-size="11">SE · 135°</text><text x="67" y="276" font-size="11">SW · 225°</text><text x="67" y="72" font-size="11">NW · 315°</text><text x="170" y="166" font-size="12" font-weight="700">Wind Direction</text><text x="170" y="182" font-size="10" fill="var(--m)">clockwise from North</text></g><path d="M170 170 L238 209" stroke="var(--o)" stroke-width="5" stroke-linecap="round"/><polygon points="238,209 226,207 232,197" fill="var(--o)"/><text x="250" y="220" fill="var(--o)" font-family="Segoe UI,Arial" font-size="12" font-weight="700">120°</text></svg><div class="dircopy"><b>Wind Direction Reference (0–360°)</b><div class="n">0°/360° = N, 90° = E, 180° = S, 270° = W. The orange arrow marks 120° (ESE), the dominant direction within the Mode wind-speed bin in both datasets.</div></div></div><div id=k class=k></div>'''
+          if anchor in s and 'Wind Direction Reference (0–360°)' not in s:
+              s = s.replace(anchor, panel, 1)
+
+          # Keep Mode headline clean; put direction only in the note.
+          s = s.replace('<div class=v>${F(H[3])} m/s @ 120° → ${F(H[4])} m/s @ 120°</div><div class=n>Dominant direction within each Mode speed bin (10° sector) · 0.2 m/s speed bin · ${F(H[5])}% → ${F(H[6])}%</div>', '<div class=v>${F(H[3])} → ${F(H[4])} m/s</div><div class=n>Mode-bin dominant direction: 120° (ESE), both datasets · 0.2 m/s bin · ${F(H[5])}% → ${F(H[6])}%</div>')
+
+          # Remove @120° from histogram labels and add a short note below the plot.
+          s = s.replace("'Old Mode '+F(H[3])+' m/s @ 120°'", "'Old Mode '+F(H[3])+' m/s'")
+          s = s.replace("'New Mode '+F(H[4])+' m/s @ 120°'", "'New Mode '+F(H[4])+' m/s'")
+          s = s.replace('<div class=p><canvas id=h></canvas></div>', '<div class=p><canvas id=h></canvas><div class=n>Mode-bin dominant direction: 120° (ESE), both datasets.</div></div>', 1)
+
+          p.write_text(s, encoding='utf-8')
+      - name: Commit dashboard update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "Add wind direction reference and simplify Mode note"
+          git push
